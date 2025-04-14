@@ -1,12 +1,15 @@
 import os
 import uuid
+import tarfile
 from pathlib import Path
 from shiny import App, ui, reactive, render
 from dataclasses import dataclass
+import subprocess
+import shutil
 
 # criacao dos diretorios que serao feitos os uploads
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR = Path("uploads")
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 # ====================================
 # AUXILIAR FUNCTIONS
@@ -20,39 +23,43 @@ class EvaluateResult:
     mensagem_estrutura: str
     mensagem_testes: str
 
-def evaluate(created_filename: str, original_filename: str, etapa: str) -> EvaluateResult:
+def evaluate(file_dict: dict, etapa: str, unique_dir: str) -> EvaluateResult:
     """Executa a validação do arquivo submetido."""
-    
     def validate_file() -> bool:
         """Realiza validação do arquivo """
-        # TODO
-        # untar, ()akefile (tambem alvo) e raiz
-        return created_filename.endswith(".tgz")
+
+        # teste nome do arquivo == nome da etapa
+        if file_dict['name'] != f'{etapa}.tgz':
+            return False
+        
+        extract_all_files(file_dict['datapath'], unique_dir)
+
+        # depois de extraido testa se makefile exisate e esta na raiz
+        makefile_path_lower = unique_dir / 'makefile'
+        makefile_path_upper = unique_dir / 'Makefile'
+        if not (makefile_path_lower.exists() or makefile_path_upper.exists()):
+            return False
+        
+        # TODO: limit size?
+        
+        return True
 
     def run_tests() -> bool:
         """Realiza os testes relacionados à cada etapa"""
-        print('created_filename: ', created_filename)
-        # TODO
-        if etapa == 'etapa1':
-            #chamar script system sendboxgrupo.sh retorno 0 ou 1 arg etapa
-            return True
-        elif etapa == 'etapa2':
-            return True
-        elif etapa == 'etapa3':
-            return True
-        elif etapa == 'etapa4':
-            return True
-        elif etapa == 'etapa5':
-            return True
-        elif etapa == 'etapa6':
-            return True
-        else:
+        try:
+            result = subprocess.run(
+                ["./sendboxgrupo.sh", etapa],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except subprocess.CalledProcessError:
             return False
 
-    
     estrutura_ok = validate_file()
     testes_ok = run_tests()
-    
+
     msg_estrutura = (
         "Estrutura do arquivo: OK!" if estrutura_ok
         else "Estrutura do arquivo: Not OK!"
@@ -64,19 +71,15 @@ def evaluate(created_filename: str, original_filename: str, etapa: str) -> Evalu
 
     return EvaluateResult(estrutura_ok, testes_ok, msg_estrutura, msg_testes)
 
-def save_file_to_disk(file_info, etapa) -> str:
-    # TODO: remover arquivo temporario
-    """Salva arquivo no disco com identificador único dentro do diretório da etapa selecionada"""
-    original_name = file_info["name"]
-    ext = os.path.splitext(original_name)[1]
-    unique_name = f"{uuid.uuid4()}{ext}"
+def extract_all_files(tar_file_path, extract_to):
+    """Extrai o arquivo .tgz para o diretório especificado"""
+    with tarfile.open(tar_file_path, 'r') as tar:
+        tar.extractall(extract_to)
 
-    path = UPLOAD_DIR / unique_name
-    with open(file_info["datapath"], "rb") as src:
-        with open(path, "wb") as dest:
-            dest.write(src.read())
-
-    return str(path)
+def remove_file_from_disk(file_dict: dict, extracted_dir: str):
+    """Remove arquivos do disco após a validação"""
+    os.remove(file_dict['datapath'])
+    shutil.rmtree(extracted_dir)
 
 def feedback_message(text: str, type: str) -> ui.Tag:
     """Gera mensagem de feedback na UI"""
@@ -115,20 +118,18 @@ def server(input, output, session):
     @reactive.event(input.submit_button)
     def result():
         """Quando botão de Submit é pressionado salva arquivo no disco e realiza a validação"""
+        # TODO: fix submit button pressed 2 times
         file_info = input.file_upload()
         if not file_info:
             return None
-        filename = file_info[0]['name']
-        datapath = file_info[0]['datapath']
-        print(f"Arquivo recebido: {original_filename}")
+        file_dict = file_info[0]
         etapa = input.etapa_select()
-        # created_filename = save_file_to_disk(file_info[0], etapa)
-        created_filename = 'a'
-        evaluate_result = evaluate(created_filename, original_filename, etapa)
-        # remove_file_from_disk(filename)
+        unique_dir = UPLOADS_DIR / str(uuid.uuid5(uuid.NAMESPACE_DNS, file_dict['datapath']))
+        evaluate_result = evaluate(file_dict, etapa, unique_dir)
+        remove_file_from_disk(file_dict, unique_dir)
         
-        print(f"Arquivo salvo como: {created_filename}")
-        print(f"Arquivo original: {original_filename}")
+        print(f"file_dict: {file_dict}")
+        print(f"Diretorio gerado: {unique_dir}")
         print(f"Etapa selecionada: {etapa}")
 
         return evaluate_result
