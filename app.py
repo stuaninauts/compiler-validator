@@ -8,8 +8,9 @@ from dataclasses import dataclass
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-for i in range(1, 7):
-    (UPLOAD_DIR / f"etapa{i}").mkdir(exist_ok=True)
+# ====================================
+# AUXILIAR FUNCTIONS
+# ====================================
 
 # classe que contem a estrutura para as mensagens exibidas na UI
 @dataclass
@@ -19,18 +20,18 @@ class EvaluateResult:
     mensagem_estrutura: str
     mensagem_testes: str
 
-def evaluate(filename: str, etapa: str) -> EvaluateResult:
+def evaluate(created_filename: str, original_filename: str, etapa: str) -> EvaluateResult:
     """Executa a validação do arquivo submetido."""
     
     def validate_file() -> bool:
         """Realiza validação do arquivo """
         # TODO
         # untar, ()akefile (tambem alvo) e raiz
-        return filename.endswith(".tgz")
+        return created_filename.endswith(".tgz")
 
     def run_tests() -> bool:
         """Realiza os testes relacionados à cada etapa"""
-        print('filename: ', filename)
+        print('created_filename: ', created_filename)
         # TODO
         if etapa == 'etapa1':
             #chamar script system sendboxgrupo.sh retorno 0 ou 1 arg etapa
@@ -51,7 +52,7 @@ def evaluate(filename: str, etapa: str) -> EvaluateResult:
     
     estrutura_ok = validate_file()
     testes_ok = run_tests()
-
+    
     msg_estrutura = (
         "Estrutura do arquivo: OK!" if estrutura_ok
         else "Estrutura do arquivo: Not OK!"
@@ -70,7 +71,7 @@ def save_file_to_disk(file_info, etapa) -> str:
     ext = os.path.splitext(original_name)[1]
     unique_name = f"{uuid.uuid4()}{ext}"
 
-    path = UPLOAD_DIR / etapa / unique_name
+    path = UPLOAD_DIR / unique_name
     with open(file_info["datapath"], "rb") as src:
         with open(path, "wb") as dest:
             dest.write(src.read())
@@ -90,8 +91,9 @@ def feedback_message(text: str, type: str) -> ui.Tag:
         style=f"background-color: {cor}; color: white; margin: 10px 0; padding: 10px;"
     )
 
-
+# ====================================
 # UI
+# ====================================
 app_ui = ui.page_fluid(
     ui.panel_title("Projeto INF01147 - Compiladores"),
     ui.h4("Valide seu entregável"),
@@ -100,13 +102,14 @@ app_ui = ui.page_fluid(
         "Selecione uma etapa:",
         {f"etapa{i}": f"Etapa {i}" for i in range(1, 7)},
     ),
-    ui.input_file("file_upload", "Faça upload do seu entregável:"),
+    ui.input_file("file_upload", "Faça upload do seu entregável:", accept=[".tgz"]),
     ui.input_action_button("submit_button", "Enviar Submissão"),
     ui.output_ui("div_file_structure"),
     ui.output_ui("div_all_tests"),
 )
-
+# ====================================
 # SERVER
+# ====================================
 def server(input, output, session):
     @reactive.Calc
     @reactive.event(input.submit_button)
@@ -115,14 +118,20 @@ def server(input, output, session):
         file_info = input.file_upload()
         if not file_info:
             return None
-
+        filename = file_info[0]['name']
+        datapath = file_info[0]['datapath']
+        print(f"Arquivo recebido: {original_filename}")
         etapa = input.etapa_select()
-        filename = save_file_to_disk(file_info[0], etapa)
-
-        print(f"Arquivo salvo como: {filename}")
+        # created_filename = save_file_to_disk(file_info[0], etapa)
+        created_filename = 'a'
+        evaluate_result = evaluate(created_filename, original_filename, etapa)
+        # remove_file_from_disk(filename)
+        
+        print(f"Arquivo salvo como: {created_filename}")
+        print(f"Arquivo original: {original_filename}")
         print(f"Etapa selecionada: {etapa}")
 
-        return evaluate(filename, etapa)
+        return evaluate_result
 
     @output
     @render.ui
