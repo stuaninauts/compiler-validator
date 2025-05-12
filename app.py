@@ -9,8 +9,8 @@ import shutil
 
 # TODO: comentado por enquanto (necessita de permissão de escrita no servidor)
 # criacao dos diretorios que serao feitos os uploads
-UPLOADS_DIR = Path(".")
 # UPLOADS_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR = Path(".")
 
 # ====================================z
 # AUXILIAR FUNCTIONS
@@ -61,9 +61,14 @@ def evaluate(file_dict: dict, etapa: str, unique_dir: str) -> EvaluateResult:
             return result.returncode == 0
         except subprocess.CalledProcessError:
             return False
-
+    
+    # try: 
     estrutura_ok = validate_file()
     testes_ok = run_tests()
+    # except Exception as e:
+    #     print(f"Erro ao validar o arquivo: {e}")
+    #     estrutura_ok = False
+    #     testes_ok = False
 
     msg_estrutura = (
         "Estrutura do arquivo: OK!" if estrutura_ok
@@ -88,7 +93,9 @@ def extract_all_files(tar_file_path, extract_to):
 def remove_file_from_disk(file_dict: dict, extracted_dir: str):
     """Remove arquivos do disco após a validação"""
     os.remove(file_dict['datapath'])
-    shutil.rmtree(extracted_dir)
+    # verificacao adicional para arquivos .tgz vazios
+    if os.path.exists(extracted_dir):
+        shutil.rmtree(extracted_dir)
 
 def feedback_message(text: str, type: str) -> ui.Tag:
     """Gera mensagem de feedback na UI"""
@@ -125,7 +132,7 @@ app_ui = ui.page_fluid(
             "submit_button",
             "Enviar Submissão",
         ),
-        "teste",
+        "São aceitos arquivos .tgz com o nome da etapa",
         placement="right",
         ),
     ui.output_ui("div_submission_info"),
